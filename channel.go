@@ -22,7 +22,7 @@ func (c *Channel) Name() string {
 	return c.name
 }
 
-func (c *Channel) Capacity() int {
+func (c *Channel) Cap() int {
 	c.m.RLock()
 	defer c.m.RUnlock()
 	return len(c.ch)
@@ -55,7 +55,7 @@ func (c *Channel) IsClosed() bool {
 func (c *Channel) String() string {
 	c.m.RLock()
 	defer c.m.RUnlock()
-	return fmt.Sprintf("(*Channel Cargo){ Name: %s, Capacity: %d, IsClosed: %t }",
+	return fmt.Sprintf("(*Channel Cargo){ Name: %s, Cap: %d, IsClosed: %t }",
 		c.name, len(c.ch), c.isClosed)
 }
 

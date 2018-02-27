@@ -86,12 +86,15 @@ func (bq *blockingQueue) checkLen(pushing bool) bool {
 }
 
 func (bq *blockingQueue) check(pushing bool, exit *exit) bool {
-	if bq.closed {
+	if pushing && bq.closed {
 		return false
 	}
 
 check:
 	if !bq.checkLen(pushing) {
+		if !pushing && bq.closed {
+			return false
+		}
 		if exit != nil {
 			exit.SetCond(bq.seal)
 		}
@@ -99,7 +102,7 @@ check:
 		if exit != nil {
 			exit.SetCond(nil)
 		}
-		if bq.closed {
+		if pushing && bq.closed {
 			return false
 		}
 		if exit != nil && exit.Opening() {
@@ -121,8 +124,13 @@ func (bq *blockingQueue) Push(cargo Cargo, exit *exit) bool {
 	bq.l.Lock()
 	defer bq.l.Unlock()
 
-	if bq.capacity == 0 && bq.single == nil {
-		bq.single = cargo
+	if bq.capacity == 0 {
+		if !bq.check(true, exit) {
+			return false
+		}
+		if bq.capacity == 0 {
+			bq.single = cargo
+		}
 	}
 
 	bq.unblock()
@@ -142,6 +150,8 @@ func (bq *blockingQueue) Push(cargo Cargo, exit *exit) bool {
 func (bq *blockingQueue) Pop(exit *exit) (Cargo, bool) {
 	bq.l.Lock()
 	defer bq.l.Unlock()
+
+	bq.unblock()
 
 	if !bq.check(false, exit) {
 		return nil, false
@@ -193,13 +203,16 @@ func (bq *blockingQueue) TryPush(cargo Cargo) bool {
 	}
 
 	if bq.capacity == 0 {
+		if bq.single != nil {
+			return false
+		}
 		bq.single = cargo
 	}
 
 	bq.l.Unlock()
 
 	bq.unblock()
-	time.Sleep(time.Millisecond * 10)
+	time.Sleep(time.Millisecond)
 
 	bq.l.Lock()
 
@@ -224,20 +237,12 @@ func (bq *blockingQueue) TryPop() (Cargo, bool) {
 	bq.l.Lock()
 	defer bq.l.Unlock()
 
-	if bq.closed {
-		return nil, false
-	}
-
 	bq.l.Unlock()
 
 	bq.unblock()
-	time.Sleep(time.Millisecond * 10)
+	time.Sleep(time.Millisecond)
 
 	bq.l.Lock()
-
-	if bq.closed {
-		return nil, false
-	}
 
 	if !bq.checkLen(false) {
 		return nil, false
@@ -263,6 +268,8 @@ func (bq *blockingQueue) Close() {
 	defer bq.l.Unlock()
 
 	bq.closed = true
+
+	bq.unblock()
 }
 
 func (bq *blockingQueue) Closed() bool {
@@ -272,7 +279,7 @@ func (bq *blockingQueue) Closed() bool {
 	return bq.closed
 }
 
-func (bq *blockingQueue) Capacity() int {
+func (bq *blockingQueue) Cap() int {
 	bq.l.RLock()
 	defer bq.l.RUnlock()
 
